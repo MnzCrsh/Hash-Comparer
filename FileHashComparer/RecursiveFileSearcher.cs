@@ -9,6 +9,8 @@ namespace FileHashComparer;
 /// </summary>
 public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
 {
+    #region Collections
+
     /// <summary>
     /// Unique traversed directories.
     /// </summary>
@@ -24,7 +26,9 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     /// </summary>
     private readonly List<string> _fileDuplicatesPaths = [];
 
-    private readonly Lock _folderLockObject = new();
+    #endregion
+
+    #region Sync objects
 
     /// <summary>
     /// Semaphore to limit the number of concurrent directories processing tasks based on the number of available processors.
@@ -39,6 +43,14 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     /// </summary>
     private readonly SemaphoreSlim _fileSemaphore = new(Environment.ProcessorCount,
         Environment.ProcessorCount);
+    
+    private readonly Lock _folderLockObject = new();
+    private readonly Lock _fileLockObject = new();
+    
+    private const int MaxRecursionDepth = 1000;
+    private static readonly AsyncLocal<int> CurrentRecursionDepth = new();
+
+    #endregion
 
     /// <summary>
     /// Recursively traverses file system to locate duplicate files
@@ -46,43 +58,100 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     /// <param name="newDirectory">Directory to traverse</param>
     /// <param name="token">Cancellation token</param>
     /// <returns>List of duplicate files location</returns>
-    public async Task<IEnumerable<string>> SearchDuplicateFilesRecursive(string newDirectory, CancellationToken token)
+    public async Task<IEnumerable<string>> SearchDuplicateFilesAsync(string newDirectory, CancellationToken token)
     {
-        if (!Directory.Exists(newDirectory))
-        {
-            throw new ArgumentException($"Directory {newDirectory} does not exist");
-        }
-
+        CurrentRecursionDepth.Value += 1;
+        
+        CheckDirectoryExists(newDirectory);
         CheckDirectoryUniqueness(newDirectory);
 
-        var (filePaths, fileHashes) = await GetFilePathsAndHashes(newDirectory, token);
+        await AnalyzeFilesForDuplicates(newDirectory, token);
 
-        ProcessFileHashes(filePaths, fileHashes);
-
-        var directoriesToTraverse = 
-            Directory.GetDirectories(newDirectory, "*", SearchOption.TopDirectoryOnly);
-            
-        var tasks = directoriesToTraverse.Select(dir => Task.Run(async () =>
+        var tasks = GetDirectories(newDirectory)
+            .Select( async dir=>
             {
                 await _folderSemaphore.WaitAsync(token);
                 try
                 {
+                    CheckRecursionDepth();
+
                     // Recursive call
-                    await SearchDuplicateFilesRecursive(dir, token);
+                    await SearchDuplicateFilesAsync(dir, token);
+                }
+                catch (Exception e)
+                {
+                    logger.LogCritical("Recursive search error: {error}", e.Message);
                 }
                 finally
                 {
+                    CurrentRecursionDepth.Value -= 1;
                     _folderSemaphore.Release();
                 }
-            }, token))
+            })
             .ToList();
+        
         await Task.WhenAll(tasks);
-
-        return _fileDuplicatesPaths;
+        
+        lock (_fileLockObject)
+        {
+            return _fileDuplicatesPaths.ToList();
+        }
     }
 
     /// <summary>
-    /// Adds unique hashes to hashset, moving duplicates to list
+    /// Checks if recursion depth limit is reached.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"></exception>
+    private static void CheckRecursionDepth()
+    {
+        if (CurrentRecursionDepth.Value > MaxRecursionDepth)
+        {
+            throw new InvalidOperationException(
+                $"Maximum recursion depth of {MaxRecursionDepth} exceeded.");
+        }
+    }
+
+
+    /// <summary>
+    /// Compares files with cached hashes. If there is collision by hash, then file will be added to duplicates list.
+    /// </summary>
+    /// <param name="directory">Current file directory</param>
+    /// <param name="token">Cancellation token</param>
+    private async Task AnalyzeFilesForDuplicates(string directory, CancellationToken token)
+    {
+        var (filePaths, fileHashes) = 
+            await GetFilePathsAndHashesAsync(directory, token);
+
+        ProcessFileHashes(filePaths, fileHashes);
+    }
+    
+    /// <summary>
+    /// Gets list of subfolders in current directory.
+    /// </summary>
+    /// <param name="directory">Current directory</param>
+    /// <returns>Subfolders</returns>
+    private static string[] GetDirectories(string directory)
+    {
+        var directoriesToTraverse = 
+            Directory.GetDirectories(directory, "*", SearchOption.TopDirectoryOnly);
+        return directoriesToTraverse;
+    }
+
+    /// <summary>
+    /// Checks if directory path is valid. 
+    /// </summary>
+    /// <param name="directory">Directory to check</param>
+    /// <exception cref="ArgumentException">Throws if directory is not valid</exception>
+    private static void CheckDirectoryExists(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            throw new ArgumentException($"Directory {directory} does not exist");
+        }
+    }
+
+    /// <summary>
+    /// Adds unique hashes to hashset, moving duplicates to list.
     /// </summary>
     /// <param name="filePaths">File locations</param>
     /// <param name="fileHashes">Computed hashes</param>
@@ -90,20 +159,24 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     {
         foreach (var (filePath, fileHash) in filePaths.Zip(fileHashes, (path, hash) => (path, hash)))
         {
-            var fileIsAdded = _uniqueFiles.Add(fileHash);
-            if (!fileIsAdded)
+            lock (_fileLockObject)
             {
+                var fileIsAdded = _uniqueFiles.Add(fileHash);
+                if (fileIsAdded)
+                {
+                    continue;
+                }
                 _fileDuplicatesPaths.Add(filePath);
             }
         }
     }
 
     /// <summary>
-    /// Gets computed hashes and file locations
+    /// Gets computed hashes and file locations.
     /// </summary>
     /// <param name="directory">Directory to explore</param>
     /// <param name="token">Cancellation token</param>
-    private async Task<(string[] filePaths, string[] fileHashes)> GetFilePathsAndHashes(string directory,
+    private async Task<(string[] filePaths, string[] fileHashes)> GetFilePathsAndHashesAsync(string directory,
         CancellationToken token)
     {
         var filePaths = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly);
@@ -113,7 +186,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     }
 
     /// <summary>
-    /// Checks if directory already been traversed. 
+    /// Checks if directory already been traversed.
     /// </summary>
     /// <param name="newDirectory"></param>
     /// <exception cref="InvalidOperationException">If already traversed, that means we are in a loop,
@@ -136,7 +209,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     }
 
     /// <summary>
-    /// Concurrently computes files hashes inside directory
+    /// Concurrently computes files hashes inside directory.
     /// </summary>
     /// <param name="filePaths">Paths to files</param>
     /// <param name="token">Cancellation token</param>
@@ -144,14 +217,8 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     private async Task<string[]> GetFileHashesAsync(string[] filePaths, CancellationToken token)
     {
         var hashes = new ConcurrentBag<string>();
-        var tasks = filePaths.Select(async file =>
+        var tasks = filePaths.Where(File.Exists).Select(async file =>
         {
-            if (!File.Exists(file))
-            {
-                logger.LogWarning("File {file} does not exist.", file);
-                return;
-            }
-
             await _fileSemaphore.WaitAsync(token);
             try
             {
@@ -163,7 +230,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
             }
             catch (Exception ex)
             {
-                logger.LogError("File {file} could not be hashed. Error: {errorMessage}", file, ex.Message);
+                logger.LogError("Failed to compute hash for file {file}. Error: {errorMessage}", file, ex.Message);
             }
             finally
             {
