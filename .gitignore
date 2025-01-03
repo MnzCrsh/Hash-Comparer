@@ -1,0 +1,72 @@
+﻿# Node.js / Angular
+/node_modules/
+/dist/
+/npm-debug.log
+/yarn-error.log
+/package-lock.json
+/yarn.lock
+/.angular/
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+x64/
+x86/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+
+# C# / .NET
+bin/
+/obj/
+/.vs/
+/.vscode/
+/.idea/
+/# Windows
+Thumbs.db
+ehthumbs.db
+project.lock.json
+project.fragment.lock.json
+artifacts/
+**/Properties/launchSettings.json
+
+# NuGet Packages
+*.nupkg
+# The packages folder can be ignored because of Package Restore
+**/packages/*
+# except build/, which is used as an MSBuild target.
+!**/packages/build/
+# NuGet v3's project.json files produces more ignorable files
+*.nuget.props
+*.nuget.targets
+
+# FAKE - F# Make
+.fake/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# User-specific files
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Docker
+# Ignore Docker-related files
+*.log
+docker-compose.override.yml
+
+# Ignore Docker volumes
+.docker/
+
+# Build and runtime artifacts for Docker
+**/Dockerfile
+**/docker-compose.yml
+**/docker-compose.override.yml
+**/.docker/
+**/docker-compose*.yml
