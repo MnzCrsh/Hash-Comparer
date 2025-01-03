@@ -43,9 +43,12 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     /// </summary>
     private readonly SemaphoreSlim _fileSemaphore = new(Environment.ProcessorCount,
         Environment.ProcessorCount);
+
+    /// <inheritdoc cref="Lock" />
+    private readonly Lock _folderLock = new();
     
-    private readonly Lock _folderLockObject = new();
-    private readonly Lock _fileLockObject = new();
+    /// <inheritdoc cref="Lock" />
+    private readonly Lock _fileLock = new();
     
     private const int MaxRecursionDepth = 1000;
     private static readonly AsyncLocal<int> CurrentRecursionDepth = new();
@@ -81,6 +84,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
                 catch (Exception e)
                 {
                     logger.LogCritical("Recursive search error: {error}", e.Message);
+                    throw;
                 }
                 finally
                 {
@@ -92,7 +96,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
         
         await Task.WhenAll(tasks);
         
-        lock (_fileLockObject)
+        using (_fileLock.EnterScope())
         {
             return _fileDuplicatesPaths.ToList();
         }
@@ -159,7 +163,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     {
         foreach (var (filePath, fileHash) in filePaths.Zip(fileHashes, (path, hash) => (path, hash)))
         {
-            lock (_fileLockObject)
+            using (_fileLock.EnterScope())
             {
                 var fileIsAdded = _uniqueFiles.Add(fileHash);
                 if (fileIsAdded)
@@ -194,7 +198,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
     private void CheckDirectoryUniqueness(string newDirectory)
     {
         bool uniqueDir;
-        lock (_folderLockObject)
+        using (_folderLock.EnterScope())
         {
             uniqueDir = _visitedDirectories.Add(newDirectory);
         }
@@ -231,6 +235,7 @@ public class RecursiveFileComparer(ILogger<RecursiveFileComparer> logger)
             catch (Exception ex)
             {
                 logger.LogError("Failed to compute hash for file {file}. Error: {errorMessage}", file, ex.Message);
+                throw;
             }
             finally
             {

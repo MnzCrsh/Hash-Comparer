@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileHashComparer", "FileHashComparer\FileHashComparer.csproj", "{396E40B6-BD84-4B53-B403-2D2663E5C46E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileHashComparer.Tests", "FileHashComparer.Tests\FileHashComparer.Tests.csproj", "{2A7B34FE-4AD4-4385-A662-377703CCE3E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{396E40B6-BD84-4B53-B403-2D2663E5C46E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{396E40B6-BD84-4B53-B403-2D2663E5C46E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{396E40B6-BD84-4B53-B403-2D2663E5C46E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2A7B34FE-4AD4-4385-A662-377703CCE3E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A7B34FE-4AD4-4385-A662-377703CCE3E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A7B34FE-4AD4-4385-A662-377703CCE3E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A7B34FE-4AD4-4385-A662-377703CCE3E3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
