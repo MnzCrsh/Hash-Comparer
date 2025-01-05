@@ -12,15 +12,16 @@ public class RecursiveFileComparerTests
     {
         // Arrange
         var loggerMock = A.Fake<ILogger<RecursiveFileComparer>>();
-        var comparor = new RecursiveFileComparer(loggerMock);
         var (baseDir, numberOfFiles) = 
-            TestUtils.CreateTestEnvironment(FolderDepth, "fileName :D", new string('a', 255));
+            TestUtils.CreateTestEnvironment(FolderDepth, "test_file", new string('a', 255));
+        
+        var comparor = new RecursiveFileComparer(loggerMock);
         
         // Act
         var fileCopies = await comparor.SearchDuplicateFilesAsync(baseDir, CancellationToken.None);
         TestUtils.CleanupTestEnvironment();
 
         // Assert
-        Assert.True(fileCopies.Count() == numberOfFiles - 1);
+        Assert.True(fileCopies.Count() -1 == numberOfFiles);
     }
 }
